@@ -1,195 +1,43 @@
-from flask import flash, Flask, render_template, request, url_for, session, redirect
-from login import login_required
-from sqlalchemy import create_engine, Table, MetaData
-from werkzeug.security import check_password_hash, generate_password_hash
-# https://flask.palletsprojects.com/en/1.1.x/patterns/sqlalchemy/
-# https://docs.sqlalchemy.org/en/13/core/connections.html?highlight=resultproxy#sqlalchemy.engine.ResultProxy
-# https://docs.sqlalchemy.org/en/13/core/tutorial.html#coretutorial-selecting
-from flask_wtf import FlaskForm
-from flask_wtf.file import FileField, FileAllowed
-from werkzeug.utils import secure_filename
-import os
-# https://flask-wtf.readthedocs.io/en/stable/form.html#module-flask_wtf.file
-# flask-wtf for the forms and upload
-# pip install flask-wtf
+# DOGS&CATS
 
-app = Flask(__name__)
-app.secret_key = b'l\xddD\xc0t\x1d=\xd4&q\xd5.\x14\xef\xb8\xb0'
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_PERMANENT'] = False
-# app.uploaded_imaegs_dest = "./static/images/"
+## CS50
+>This was my final project for conclude the CS50 Introduction to Computer Sciense course.
 
-# images = UploadSet('images', IMAGES)
-# configure_uploads(app, images)
+>CS, python, flask, flask web framework, web development, CS50
+## Features
 
-class formUploadImage(FlaskForm):
-    # create a field
-    image = FileField(validators=[FileAllowed(['jpg', 'png'], 'Images only!')])
+- [Flask-SQLAlchemy](https://flask-sqlalchemy.palletsprojects.com/en/2.x/)
+- [Flask](https://flask.palletsprojects.com/en/1.1.x/)
+- [Flask-WTF](https://flask-wtf.readthedocs.io/en/stable/index.html)
 
-db = create_engine('sqlite:///dogscats.db')
-metadata = MetaData(bind=db)
-users = Table('users', metadata, autoload=True)
-cases = Table('cases', metadata, autoload=True)
-######### store table test in users #########
+I've used Flask web framework based in Python
+its was necessary flask-sqlalchemy for manage SQL database with sqlite and flask-wtf for upload files and forms extensions
 
-# con = db.connect()
-######### make a connection with db, but looks that is not necessary #########
+## Explaining the project and the database
+My final project is a website that allow the user register donation of pets and
+get donation from the others people (adopt). The user can also delete your register, see
+your registers and selected donations to adopt a pet from de other people
 
-# db.execute(users.insert(), id='2')
-# db.execute("INSERT INTO")
-######### two methods of INSERT VALUES IN TABLE #########
+All information about users, cases and selected cases for each people are stored in dogscats.db.
 
-# rows = db.execute("SELECT * FROM test") #-> ResultProxy
-# linha = users.select(users.columns.id).execute().first() # ->RowProxy
-# rows = db.execute() engine (db.execute) or connection (con.execute)
-######### TWO METHODS OF SELECT VALUES using engine or connection #########
+I used sqlalchemy extension for connect the database to application and sqlite3 to manager her.
 
-######### TESTS #########
-# print("INICIO FELIPAO")
-# print(type(rows)) ResultProxy
-# print(type(linha)) .first do this to be a RowProxy
-# print(rows)
-# print(linha)
-# for row in rows:
-#     print(type(row))
-#     print(row['id'])
-# # print(rows['id']) 'ResultProxy' object is not subscriptable without for loop
-# print(linha['id']) is a RowProxy, this works
-# rows = rows.fetchall() return all rows in a List
-# Thus I can use print(rows[0]['id']) :)
-# print("FIM teste ")
+### Sqlachemy and sqlite3:
+I needed three tables for my database:
 
-@app.after_request
-def after_request(response):
-    response.headers["Cache-Control"]="no-cache, no-store, must-revalidate"
-    response.headers["Expires"] = 0
-    response.headers["Pragma"] = "no-cache"
-    return response
-    # Do you know that bug in css files? this is for this, reset Cache in browser
-    
-@app.route("/")
-@login_required
-def index():
-    user = session["user_id"]
-    rowsMy = db.execute("SELECT * FROM cases WHERE person_id = :user", user=user)
-    rowsMy = rowsMy.fetchall() #transform to a list of dicts
+- First, table users. Where I put, id, username, hash (for password) and email, notice that id must be a primary key here.
 
-    rowsSelected = db.execute("SELECT * FROM cases WHERE id_case IN (SELECT id_case FROM selectedCases WHERE person_id = :user)", user=user)
-    rowsSelected = rowsSelected.fetchall()
-    name=db.execute("SELECT username FROM users WHERE id = :id",id=user)
-    name=name.fetchall()
-    return render_template("index.html", rowsMy=rowsMy, rowsSelected=rowsSelected, name=name[0]['username'])
+- Second, table cases. I put person_id, case_id, adress, email (could have referenced the users table), description, reason, photo. In photo I store the filename of the image, and in my filesystem I store all images that were uploads with flask-wtf extension. Notice that here person_id must be a foreign key.
 
-@app.route("/delete/<string:filename>", methods=['POST', 'GET'])
-@login_required
-def delete(filename):
-    print(filename)
-    rows = db.execute("SELECT * FROM cases WHERE filename = :name", name=filename)
-    rows=rows.fetchall() #transform ResultProxy to all RowProxy List
-    if rows[0]['person_id'] == session['user_id']:
-        rows=rows[0]['id_case']
-        db.execute("DELETE FROM cases WHERE id_case = :idcase", idcase=rows)
-        if filename != "default.jpg":
-            os.remove(os.path.join("static/images/users", filename))
-    return redirect("/")
+- Three, table selectedcases, this table is for store the relationship between persons and cases, one person might have many cases likewise one case might have many peoples interested
 
-@app.route("/login", methods=['GET', 'POST'])
-def login():
-    session.clear()
-    if request.method == "GET":
-        return render_template("login.html")
-    else:
-        username = request.form.get("username")
-        password = request.form.get("password")
-        error = None
-        rows = db.execute("SELECT * FROM users WHERE username = :user", user=username)
-        rows = rows.fetchall()
+### Storing images of your pets and validations.
+The input field of images have a single validate, my database have a filename field in a table and I upload this image with flask-wtf extension to my filesystem, then I have to validate each name file for don't overwrite the images with same name.
 
-        # print(rows[0]['id'])
-        # print(len(rows))
-        # print(type(rows))
-
-        if not rows:
-            error = "Incorrent username"
-            flash(error)
-            return render_template("login.html")
-        elif not check_password_hash(rows[0]['hash'], password):
-            error = "Password incorrect"
-            flash(error)
-            return render_template("login.html")
-
-        if error is None:
-            session.clear()
-            session["user_id"] = rows[0]['id']
-            return redirect("/") 
-        
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("login")
-    # https://flask.palletsprojects.com/en/1.1.x/tutorial/views/?highlight=check_password_hash#logout
-    # https://flask.palletsprojects.com/en/1.1.x/quickstart/?highlight=session%20pop
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "GET":
-        return render_template("register.html")
-    else:
-        error = None
-        user = request.form.get("username")
-        name = users.select(users.columns.username == user).execute()
-        name = name.fetchall()
-        if name != [] and name[0]['username'] == user:
-            error = "Username already exist!"
-        
-        em = request.form.get("email")
-
-        password = request.form.get("password")
-        password = generate_password_hash(password)
-
-        passConf = request.form.get("passConf")
-
-        if not check_password_hash(password, passConf):
-            error = "Password don't match"
-
-        if error is None:
-            db.execute("INSERT INTO users (username, email, hash) VALUES (:user, :em, :h)", user=user, em=em, h=password)
-            row = db.execute("SELECT id FROM users WHERE username = :user", user=user)
-            print("FELIAP")
-            print(row)
-            row = row.fetchall()
-            print(row)
-            session["user_id"] = row[0]['id']
-            return redirect("/")
-        if error != None:
-            flash(error)
-    return redirect('/register')
-
-@app.route("/MyDonation", methods=['GET', 'POST'])
-@login_required
-def registerDonation():
-    form = formUploadImage()
-    if request.method == "POST":
-        # if form.validate_on_submit() other check if its is a post request
-        f = (form.image.data)
-        # print(f) #with file is FilesTORAGE: 'DOGCAT.JPG', void is None
-
-        adress = request.form.get("adress")
-        desc = request.form.get("description")
-        reason = request.form.get("reason")
-
-        user=session["user_id"]
-        email = db.execute("SELECT email FROM users WHERE id = :user", user=user)
-        email = email.fetchall()
-        email = email[0]['email']
-        
-        if f != None:
-            filename = secure_filename(f.filename)
+```python
+filename = secure_filename(f.filename)
             name = cases.select(cases.columns.filename == filename).execute()
             name = name.fetchall()
-            # print("feliap")
-            # print(filename)
             print(name)
             if name != []:
                 # is the same folder for all users, so in this way, I will able to avoid overwrite images
@@ -198,33 +46,53 @@ def registerDonation():
                 return redirect("/MyDonation")
             # print(type(filename)) str
             f.save(os.path.join(f"static/images/users/", filename))
+``` 
 
-            db.execute("INSERT INTO cases (person_id, adress, email, description, reason, filename) VALUES (:person, :ad, :em, :des, :rea, :file)",
-            person=user, ad=adress, em=email, des=desc, rea=reason, file=filename)
+if I don't select any file, I get a default image 
 
-            return redirect("/")
-        else:
-            filename = "default.jpg"
-            db.execute("INSERT INTO cases (person_id, adress, email, description, reason, filename) VALUES (:person, :ad, :em, :des, :rea, :file)",
-            person=user, ad=adress, em=email, des=desc, rea=reason, file=filename)
-            return redirect("/")
-    else:
-        return render_template("recordsDonation.html", form=form)
+```python
+filename = "default.jpg"
+db.execute("INSERT INTO cases (person_id, adress, email, description, reason, filename) VALUES (:person, :ad, :em, :des, :rea, :file)",
+person=user, ad=adress, em=email, des=desc, rea=reason, file=filename)
+return redirect("/")
+```
 
-@app.route("/adopt")
-@login_required
-def adopt():
-    user = session['user_id']
-    allrows = db.execute("SELECT * FROM cases")
-    allrows = allrows.fetchall() # ResultPorxy to list of RowPorxy thank god I find this in docmentation
-    return render_template("adopt.html", allrows=allrows, user=user, len=len(allrows))
+Validations for username, password, etc:
+
+![Validation gif](Screenshots/validation.gif)
+## Pictures
+- Login and Adopt page
+
+| Login | Adopt |
+| :---: | :---: |
+| <img src="Screenshots/img1.png" width="400">  | <img src="Screenshots/img3adopt.png" width="400">|
+
+- Homepage and Responsive show case
+
+| Homepage | Responsive Web |
+| :---: | :---: | 
+| <img src="Screenshots/img4home.png" width="400"> | <img src="Screenshots/responsive.gif" width = "400">
 
 
-@app.route("/rec/<string:id>", methods=['POST', 'GET'])
-@login_required
-def recordAdopt(id):
-    print(id)
-    user = session["user_id"]
-    db.execute("INSERT INTO selectedCases (id_case, person_id) VALUES (:idcase, :idperson)",
-    idcase=id, idperson=user)
-    return redirect("/")
+## Demonstration on youtube
+For the CS50 final project you have to make a video showning your project,
+[My Final Project presentation](https://www.youtube.com/watch?v=YAXmRfrcOVc)
+
+## Documentation
+https://flask.palletsprojects.com/en/1.1.x/
+
+https://flask-sqlalchemy.palletsprojects.com/en/2.x/
+
+https://flask-wtf.readthedocs.io/en/stable/form.html#module-flask_wtf.file
+
+## About CS50
+CS50 is a openware course from Havard University and taught by David J. Malan
+
+Introduction to the intellectual enterprises of computer science and the art of programming. This course teaches students how to think algorithmically and solve problems efficiently. Topics include abstraction, algorithms, data structures, encapsulation, resource management, security, and software engineering. Languages include C, Python, and SQL plus students’ choice of: HTML, CSS, and JavaScript (for web development).
+
+Thank you for all CS50.
+
+- Where I get CS50 course?
+https://cs50.harvard.edu/x/2020/
+
+[LinkedIn Felipe Nieto](https://www.linkedin.com/in/felipe-antonio-nieto-curcio-9b865116a/)
